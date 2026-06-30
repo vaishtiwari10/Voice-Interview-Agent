@@ -1,7 +1,12 @@
 import { useState, useRef, useCallback } from 'react';
 
-const API_URL = 'http://localhost:4000/api/interview';
-const WS_URL = 'ws://localhost:4000/ws';
+const isProd = import.meta.env.PROD;
+const API_URL = isProd 
+  ? 'https://voice-interview-agent-gh8x.onrender.com/api/interview' 
+  : 'http://localhost:4000/api/interview';
+const WS_URL = isProd 
+  ? 'wss://voice-interview-agent-gh8x.onrender.com/ws' 
+  : 'ws://localhost:4000/ws';
 
 export function useVoiceSession() {
   const [status, setStatus] = useState('idle');
