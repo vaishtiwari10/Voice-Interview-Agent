@@ -1,0 +1,180 @@
+/* ===== Feedback Report Layout ===== */
+.feedback-report {
+  width: 100%;
+  max-width: 900px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 48px;
+  margin: 0 auto;
+}
+
+.report-header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.report-header h2 {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+
+.report-desc {
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+/* ===== Score Visualization ===== */
+.score-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 48px;
+}
+
+.score-visual {
+  width: 100%;
+  max-width: 400px;
+  margin-bottom: 16px;
+}
+
+.score-bar-bg {
+  height: 12px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  position: relative;
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.score-details {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 400px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* Status colors */
+.status-excellent { color: var(--success); }
+.status-excellent .score-bar-fill { background: var(--success); }
+
+.status-good { color: var(--accent); }
+.status-good .score-bar-fill { background: var(--accent); }
+
+.status-needs-work { color: var(--warning); }
+.status-needs-work .score-bar-fill { background: var(--warning); }
+
+/* ===== Evaluation Grid ===== */
+.summary-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 32px;
+  text-align: left;
+}
+
+.summary-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.summary-section p {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.evaluation-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 40px;
+}
+
+.eval-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 24px;
+}
+
+.eval-card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eval-card h3.strengths-title { color: var(--success); }
+.eval-card h3.weaknesses-title { color: var(--danger); }
+
+.eval-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.eval-list li {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding-left: 24px;
+  position: relative;
+}
+
+.eval-list li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--text-tertiary);
+}
+
+.eval-card.strengths .eval-list li::before {
+  content: '✓';
+  color: var(--success);
+  font-weight: bold;
+}
+
+.eval-card.weaknesses .eval-list li::before {
+  content: '•';
+  color: var(--danger);
+  font-size: 18px;
+  line-height: 14px;
+}
+
+/* ===== Footer Actions ===== */
+.report-actions {
+  display: flex;
+  justify-content: center;
+  padding-top: 32px;
+  border-top: 1px solid var(--border-default);
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  .feedback-report {
+    padding: 32px 24px;
+  }
+  .evaluation-grid {
+    grid-template-columns: 1fr;
+  }
+}
