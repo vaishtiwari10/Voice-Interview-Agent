@@ -1,4 +1,4 @@
-# 🎙️ Antigravity AI Interview Agent
+# 🎙️  AI Interview Agent
 
 An end-to-end, multilingual voice interview agent built to screen AI Intern candidates. The agent conducts a real-time voice interview, evaluates candidates against a predefined rubric, and generates a structured feedback report.
 
