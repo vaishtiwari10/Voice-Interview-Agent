@@ -1,29 +1,42 @@
 # Architecture Note
 
-## 7. Trade-offs (Latency vs. Accuracy vs. Cost)
+## 1. Retrieval Design: Storage, Chunking, and Matching
 
-When designing the real-time audio pipeline, several trade-offs were made to balance a premium user experience with prototype constraints:
+**Storage and Chunking**
+The reference Q&A dataset is stored in Pinecone, a vector database. To ensure high-quality contextual retrieval, the dataset is chunked structurally rather than by arbitrary token counts. Each question in the dataset is split into three distinct chunks:
+- `question`: The text of the question itself.
+- `ideal_answer`: A comprehensive example of a perfect answer.
+- `rubric`: Keyphrases and a follow-up hint to evaluate the candidate's response.
+These chunks are enriched with metadata (category, difficulty, language, and question ID).
 
-- **Audio Transmission (Hold-to-Talk vs. VAD):** 
-  Instead of implementing continuous Voice Activity Detection (VAD) and streaming raw PCM bytes—which is highly susceptible to background noise and requires complex client-side audio processing—we opted for a "Hold-to-Talk" WebM Blob transmission. This slightly increases latency (since STT cannot begin until the user finishes speaking) but drastically improves transcription accuracy and reduces accidental LLM triggers.
-- **Model Selection:** 
-  We chose `whisper-large-v3` on Groq over smaller local models. While local STT eliminates network latency, Groq's LPU inference is so fast that the network round-trip is negligible, and we gain state-of-the-art multilingual accuracy for free. Similarly, Gemini 2.5 Flash was chosen over Pro for its extreme speed and native JSON structured output capabilities.
-- **ElevenLabs Streaming:**
-  Instead of waiting for the full MP3 file to generate, the backend pipes the `ReadableStream` directly from ElevenLabs to the WebSocket client as binary chunks. This minimizes the time-to-first-byte (TTFB) so the user hears the AI start speaking almost instantly after the LLM generates its response.
+**Matching Approach**
+We implemented a dual-path retrieval strategy:
+1. **Deterministic Fetch (Primary):** During the interview flow, the system tracks which question the user is currently answering (e.g., `q01`). We bypass semantic search and use Pinecone's direct ID fetch to pull the exact `question`, `ideal_answer`, and `rubric` chunks for the current topic. This guarantees 100% accuracy for the interview context.
+2. **Semantic Search (Fallback):** If a candidate provides a highly tangential answer, we can embed their response and perform a semantic query against all `ideal_answer` and `rubric` chunks in the database to see if they accidentally answered a different question or hit another rubric.
 
-## 8. Edge Cases Handled
+**Why this approach?**
+A purely semantic approach (embedding the user's transcript and pulling the nearest neighbor) is dangerous in a structured interview. If the user answers poorly, the semantic search might pull an unrelated question's rubric, confusing the LLM. The deterministic fetch anchors the LLM strictly to the current topic, while structural chunking ensures the LLM receives clean, categorized context rather than a muddy block of text.
 
-The following edge cases and potential failure modes have been mitigated in the architecture:
+## 2. Controlling LLM Behavior (The Interviewer Persona)
 
-- **Browser Audio Format Discrepancies:** iOS Safari does not natively support recording in standard WebM/Opus. The frontend attempts to request `audio/webm;codecs=opus`, but gracefully falls back to the browser's default MIME type if unsupported. Groq's Whisper API accepts both transparently.
-- **Multilingual Context Switching:** If a user selects "German", the system must ensure the LLM doesn't reply in English. This is handled by dynamically injecting the language preference into both the deterministic Pinecone metadata filter and the Gemini system prompt. ElevenLabs' `eleven_multilingual_v2` model seamlessly synthesizes the resulting non-English text without needing voice ID swapping.
-- **Premature Interview Termination:** If a user clicks "End Interview" before answering any questions, the feedback generator would traditionally hallucinate or fail. The `feedback.js` module explicitly checks the session history length and returns a safe "Not enough data" JSON fallback if the history is too short.
-- **Stale WebSocket Connections:** The Node.js WebSocket server cleans up session references upon the `ws.on('close')` event to prevent memory leaks if the client refreshes the page mid-interview.
+Keeping the LLM behaving like an interviewer rather than an encyclopedic chatbot was achieved through strict system prompting and architectural constraints:
 
-## 9. Next Steps (Beyond the Prototype)
+- **Grounding without Leaking:** The system prompt explicitly injects the `CURRENT TOPIC`, `IDEAL ANSWER`, and `KEY RUBRIC PHRASES` retrieved from Pinecone. However, it contains a hard negative constraint: *"NEVER read back the ideal answer or rubric. Act like a human having a conversation."* This forces the LLM to use the context strictly for *evaluation*, not for recitation.
+- **Managing Follow-ups:** The prompt instructs the LLM: *"If the user's answer is missing key ideal points, ask a natural follow-up question to dig deeper."* The LLM is also provided a specific `FOLLOW-UP HINT` from the database to guide the candidate gently if they are completely stuck, ensuring the AI doesn't hallucinate irrelevant technical hints.
+- **Staying on Track and Progression:** To prevent the AI from getting stuck on a single topic, we designed a hidden command architecture. We inject the *next* question's topic into the prompt. The LLM is instructed: *"If the candidate has sufficiently answered the current topic... IMMEDIATELY ask the NEXT TOPIC. If you do this, you MUST append the exact string '[NEXT_QUESTION]' at the very end of your response."* The backend orchestrator intercepts this token, strips it from the final audio, and automatically increments the session's question state.
 
-If this prototype were to be scaled into a production system, the following areas would be prioritized:
+## 3. Latency Optimization: Where Time is Spent
 
-1. **Full-Duplex Interruption (Barge-in):** Currently, the user must wait for the AI to finish speaking. We would implement a continuous WebRTC or dual-channel WebSocket stream with client-side VAD, allowing the user to interrupt the AI mid-sentence.
-2. **Persistent Session Storage:** The in-memory `Map` used in `sessionStore.js` would be replaced with Redis for horizontal scaling and PostgreSQL for long-term storage of candidate transcripts and feedback reports.
-3. **Dynamic Evaluation Logic:** Instead of iterating through questions deterministically (`q01`, `q02`), the LLM would be given a tool (function calling) to autonomously decide when a candidate has satisfactorily answered a topic and dynamically select the next most appropriate question from the vector database.
+Voice agents must feel responsive to maintain a natural conversational flow. In our pipeline, latency is distributed across three main phases:
+
+1. **Speech-to-Text (STT):** We use Groq's Whisper API. Because we use a "Hold-to-Talk" mechanism, STT cannot begin until the user releases the button and the audio Blob is uploaded.
+2. **LLM Inference:** We use `llama-3.3-70b-versatile` via Groq. The prompt is large (containing the system instructions and full conversation history).
+3. **Text-to-Speech (TTS):** We use ElevenLabs for high-quality voice synthesis.
+
+**Current Optimizations:**
+- **TTS Streaming:** Instead of waiting for ElevenLabs to generate the entire audio file, we pipe the `ReadableStream` directly from the API through our WebSocket to the client. The browser begins playing the binary chunks immediately, drastically reducing Time-to-First-Byte (TTFB).
+- **LPU Inference:** Groq's Language Processing Units process the LLM inference much faster than traditional GPUs, minimizing phase 2 latency.
+
+**How we would reduce it further:**
+1. **Continuous Voice Activity Detection (VAD):** Instead of Hold-to-Talk, implementing client-side VAD (WebRTC) would allow us to stream audio chunks continuously. STT could transcribe in real-time, completely eliminating the upload delay at the end of the user's speech.
+2. **LLM Token Streaming:** Currently, we wait for the LLM to generate its *full* text response before sending it to ElevenLabs. By enabling LLM streaming, we could send the response to ElevenLabs sentence-by-sentence. ElevenLabs could synthesize the first sentence while the LLM is still generating the second, overlapping the latency of phase 2 and 3 and achieving near-instantaneous replies.
